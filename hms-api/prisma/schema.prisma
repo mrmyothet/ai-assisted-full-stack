@@ -5,7 +5,7 @@
 
 generator client {
   provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  output   = "../lib/generated/prisma"
 }
 
 datasource db {
@@ -109,20 +109,34 @@ enum GroupBookingStatus {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String
-  emailVerified Boolean   @default(false)
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  staffMember   StaffMember?
-  guestProfile  Guest?
+  id               String     @id
+  name             String
+  email            String
+  emailVerified    Boolean    @default(false)
+  image            String?
+  twoFactorEnabled Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  sessions         Session[]
+  accounts         Account[]
+  staffMember      StaffMember?
+  guestProfile     Guest?
+  twoFactor        TwoFactor?
 
   @@unique([email])
   @@map("user")
+}
+
+model TwoFactor {
+  id          String  @id
+  userId      String  @unique
+  secret      String
+  backupCodes String
+  verified    Boolean @default(true)
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("twoFactor")
 }
 
 model Session {

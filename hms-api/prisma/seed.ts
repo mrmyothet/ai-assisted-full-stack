@@ -1,5 +1,7 @@
 import "dotenv/config";
-import { PrismaClient } from "../app/generated/prisma/client";
+import { randomUUID } from "node:crypto";
+import { hashPassword } from "better-auth/crypto";
+import { PrismaClient } from "../lib/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const adapter = new PrismaPg({
@@ -9,6 +11,93 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 
 const HOTEL_ID = "technortal";
+const ADMIN_EMAIL = "admin@technortal.hotel";
+const ADMIN_PASSWORD = "Admin123!";
+
+async function seedAdminUser() {
+  const userId = randomUUID();
+  const hashedPassword = await hashPassword(ADMIN_PASSWORD);
+
+  const user = await prisma.user.upsert({
+    where: { email: ADMIN_EMAIL },
+    update: {
+      name: "Admin User",
+      emailVerified: true,
+      twoFactorEnabled: true,
+    },
+    create: {
+      id: userId,
+      name: "Admin User",
+      email: ADMIN_EMAIL,
+      emailVerified: true,
+      twoFactorEnabled: true,
+      accounts: {
+        create: {
+          id: randomUUID(),
+          accountId: userId,
+          providerId: "credential",
+          password: hashedPassword,
+        },
+      },
+    },
+  });
+
+  const account = await prisma.account.findFirst({
+    where: { userId: user.id, providerId: "credential" },
+  });
+
+  if (!account) {
+    await prisma.account.create({
+      data: {
+        id: randomUUID(),
+        accountId: user.id,
+        providerId: "credential",
+        userId: user.id,
+        password: hashedPassword,
+      },
+    });
+  } else {
+    await prisma.account.update({
+      where: { id: account.id },
+      data: { password: hashedPassword },
+    });
+  }
+
+  await prisma.twoFactor.upsert({
+    where: { userId: user.id },
+    update: {
+      secret: "otp",
+      backupCodes: "[]",
+      verified: true,
+    },
+    create: {
+      id: randomUUID(),
+      userId: user.id,
+      secret: "otp",
+      backupCodes: "[]",
+      verified: true,
+    },
+  });
+
+  await prisma.staffMember.upsert({
+    where: { userId: user.id },
+    update: {
+      role: "ADMIN",
+      isActive: true,
+    },
+    create: {
+      userId: user.id,
+      role: "ADMIN",
+      isActive: true,
+    },
+  });
+
+  console.log("Seeded admin staff user:");
+  console.log(`  Email: ${ADMIN_EMAIL}`);
+  console.log(`  Password: ${ADMIN_PASSWORD}`);
+
+  return user;
+}
 
 async function main() {
   const hotel = await prisma.hotelProfile.upsert({
@@ -105,6 +194,8 @@ async function main() {
       create: outlet,
     });
   }
+
+  await seedAdminUser();
 
   console.log("Seeded Technortal Hotel:", {
     hotel: hotel.name,
